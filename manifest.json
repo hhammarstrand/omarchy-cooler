@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "hhammarstrand.cooler",
+  "name": "Cooler",
+  "version": "1.0.0",
+  "author": "hhammarstrand",
+  "description": "Corsair H100i Pro liquid temperature, pump mode, fan control, and logo RGB",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Cooler",
+    "description": "H100i Pro temperature, pump, fans, and logo RGB",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "displayMode": "temp"
+    },
+    "schema": [
+      {
+        "key": "displayMode",
+        "type": "string",
+        "label": "Bar display",
+        "defaultValue": "temp"
+      }
+    ]
+  }
+}

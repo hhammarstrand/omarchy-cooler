@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""Status and control helper for the Corsair H100i Pro Omarchy panel."""
+
+from __future__ import annotations
+
+import fcntl
+import json
+import os
+import subprocess
+import sys
+
+PRODUCT = os.environ.get("COOLERCTL_PRODUCT", "0c15")
+CONFIG_PATH = os.environ.get(
+    "OMARCHY_COOLER_CONFIG",
+    os.path.join(
+        os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config")),
+        "omarchy",
+        "cooler.json",
+    ),
+)
+LOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "omarchy-cooler.lock")
+MODES = ("quiet", "balanced", "performance")
+LOGO_MODES = ("fixed", "pulse", "blinking", "shift", "alert")
+LOGO_SPEEDS = ("slower", "normal", "faster")
+ALERT_COLORS = ["00ff00", "ffff00", "ff0000"]
+
+
+def empty_status(error: str = "No cooler found") -> dict:
+    return {
+        "present": False,
+        "description": "",
+        "liquidTemp": None,
+        "fan1Rpm": None,
+        "fan2Rpm": None,
+        "pumpMode": "balanced",
+        "pumpRpm": None,
+        "fanDuty": None,
+        "fanAuto": True,
+        "firmware": "",
+        "logoMode": "",
+        "logoColors": [],
+        "logoSpeed": "normal",
+        "error": error,
+    }
+
+
+def load_config() -> dict:
+    try:
+        with open(CONFIG_PATH, encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    pump = str(data.get("pumpMode") or "balanced").strip().lower()
+    if pump not in MODES:
+        pump = "balanced"
+    duty = data.get("fanDuty", None)
+    if duty is not None:
+        try:
+            duty = max(0, min(100, int(duty)))
+        except (TypeError, ValueError):
+            duty = None
+    logo_mode = str(data.get("logoMode") or "").strip().lower()
+    if logo_mode not in LOGO_MODES:
+        logo_mode = ""
+    logo_speed = str(data.get("logoSpeed") or "normal").strip().lower()
+    if logo_speed not in LOGO_SPEEDS:
+        logo_speed = "normal"
+    colors = []
+    raw_colors = data.get("logoColors") or []
+    if isinstance(raw_colors, list):
+        for item in raw_colors:
+            hex_color = normalize_hex(item)
+            if hex_color:
+                colors.append(hex_color)
+    return {
+        "pumpMode": pump,
+        "fanDuty": duty,
+        "managed": data.get("managed") is True or duty is not None,
+        "logoMode": logo_mode,
+        "logoColors": colors,
+        "logoSpeed": logo_speed,
+    }
+
+
+def normalize_hex(value) -> str:
+    text = str(value or "").strip().lstrip("#").lower()
+    if len(text) == 3 and all(ch in "0123456789abcdef" for ch in text):
+        text = "".join(ch * 2 for ch in text)
+    if len(text) != 6 or any(ch not in "0123456789abcdef" for ch in text):
+        return ""
+    return text
+
+
+def logo_payload(config: dict) -> tuple[str, list[str], str]:
+    mode = config.get("logoMode") or ""
+    if mode not in LOGO_MODES:
+        return "", [], "normal"
+    colors = [c for c in (normalize_hex(item) for item in (config.get("logoColors") or [])) if c]
+    speed = config.get("logoSpeed") if config.get("logoSpeed") in LOGO_SPEEDS else "normal"
+    if mode == "alert":
+        colors = list(ALERT_COLORS)
+    elif mode == "shift":
+        if not colors:
+            colors = ["00c8ff"]
+        if len(colors) < 2:
+            colors.append("ffffff")
+        colors = colors[:4]
+    else:
+        if not colors:
+            colors = ["00c8ff"]
+        colors = colors[:1] if mode == "fixed" else colors[:4]
+    return mode, colors, speed
+
+
+def save_config(config: dict) -> None:
+    os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+    tmp_path = CONFIG_PATH + ".tmp"
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        json.dump(config, handle, indent=2)
+        handle.write("\n")
+    os.replace(tmp_path, CONFIG_PATH)
+
+
+def acquire_lock():
+    os.makedirs(os.path.dirname(LOCK_PATH), exist_ok=True)
+    handle = open(LOCK_PATH, "w", encoding="utf-8")
+    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    return handle
+
+
+def liquidctl(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["liquidctl", "--product", PRODUCT, *args],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+def status_value(items, key):
+    for item in items or []:
+        if item.get("key") == key:
+            return item.get("value")
+    return None
+
+
+def normalize(payload, config: dict, error: str = "") -> dict:
+    if not payload:
+        return empty_status(error or "No cooler found")
+    device = payload[0] if isinstance(payload, list) else payload
+    items = device.get("status") or []
+    pump = str(status_value(items, "Pump mode") or config.get("pumpMode") or "balanced")
+    pump = pump.strip().lower()
+    if pump not in MODES:
+        pump = config.get("pumpMode", "balanced")
+    duty = config.get("fanDuty")
+    mode, colors, speed = logo_payload(config)
+    return {
+        "present": True,
+        "description": device.get("description") or "Corsair Hydro H100i Pro",
+        "liquidTemp": status_value(items, "Liquid temperature"),
+        "fan1Rpm": status_value(items, "Fan 1 speed"),
+        "fan2Rpm": status_value(items, "Fan 2 speed"),
+        "pumpMode": pump,
+        "pumpRpm": status_value(items, "Pump speed"),
+        "fanDuty": duty,
+        "fanAuto": duty is None,
+        "firmware": status_value(items, "Firmware version") or "",
+        "logoMode": mode,
+        "logoColors": colors,
+        "logoSpeed": speed,
+        "error": error,
+    }
+
+
+def parse_json(raw: str):
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+
+
+def emit(status: dict, code: int = 0) -> int:
+    json.dump(status, sys.stdout, separators=(",", ":"))
+    sys.stdout.write("\n")
+    return code
+
+
+def read_status(config: dict) -> dict:
+    try:
+        proc = liquidctl("--json", "status")
+    except FileNotFoundError:
+        return empty_status("liquidctl is not installed")
+    payload = parse_json(proc.stdout)
+    if proc.returncode != 0 or not payload:
+        err = (proc.stderr or "").strip() or "Cooler did not respond"
+        if "no devices" in err.lower() or "no device" in err.lower():
+            err = "No Corsair H100i Pro found"
+        return empty_status(err)
+    return normalize(payload, config)
+
+
+def initialize(config: dict) -> dict:
+    try:
+        proc = liquidctl("--json", "--pump-mode", config["pumpMode"], "initialize")
+    except FileNotFoundError:
+        return empty_status("liquidctl is not installed")
+    if proc.returncode != 0:
+        err = (proc.stderr or "").strip() or "Could not initialize cooler"
+        return empty_status(err)
+    payload = parse_json(proc.stdout)
+    firmware = ""
+    if payload:
+        firmware = status_value((payload[0] if isinstance(payload, list) else payload).get("status"), "Firmware version") or ""
+    if config.get("fanDuty") is not None:
+        fan = liquidctl("set", "fan", "speed", str(config["fanDuty"]))
+        if fan.returncode != 0:
+            status = read_status(config)
+            status["error"] = (fan.stderr or "").strip() or "Could not set fan speed"
+            if firmware and not status.get("firmware"):
+                status["firmware"] = firmware
+            return status
+    status = read_status(config)
+    if firmware and not status.get("firmware"):
+        status["firmware"] = firmware
+    logo_error = apply_logo(config)
+    if logo_error:
+        status["error"] = logo_error
+    return status
+
+
+def apply_logo(config: dict) -> str:
+    mode, colors, speed = logo_payload(config)
+    if not mode:
+        return ""
+    args: list[str] = []
+    if mode in ("pulse", "blinking", "shift"):
+        args.extend(["--speed", speed])
+    args.extend(["set", "logo", "color", mode, *colors])
+    try:
+        proc = liquidctl(*args)
+    except FileNotFoundError:
+        return "liquidctl is not installed"
+    if proc.returncode != 0:
+        return (proc.stderr or "").strip() or "Could not set logo color"
+    return ""
+
+
+def set_logo(config: dict, mode: str, colors: list[str], speed: str) -> dict:
+    config["logoMode"] = mode
+    config["logoColors"] = colors
+    config["logoSpeed"] = speed
+    save_config(config)
+    error = apply_logo(config)
+    status = read_status(config)
+    if error:
+        status["error"] = error
+    return status
+
+
+def set_fan(config: dict, duty: int) -> dict:
+    config["fanDuty"] = duty
+    config["managed"] = True
+    save_config(config)
+    try:
+        proc = liquidctl("set", "fan", "speed", str(duty))
+    except FileNotFoundError:
+        return empty_status("liquidctl is not installed")
+    if proc.returncode != 0:
+        return initialize(config)
+    return read_status(config)
+
+
+def usage() -> int:
+    sys.stderr.write(
+        "Usage: coolerctl status|apply|set-pump <mode>|set-fan <percent>|fan-auto|"
+        "set-logo <mode> <speed> [hex...]\n"
+    )
+    return 2
+
+
+def main(argv: list[str]) -> int:
+    if not argv:
+        return usage()
+    command = argv[0]
+    lock = acquire_lock()
+    try:
+        config = load_config()
+        if command == "status":
+            return emit(read_status(config))
+        if command == "apply":
+            # Do not initialize until the user has changed pump or fans here.
+            # A leftover Windows/iCUE curve survives until then.
+            if config.get("managed"):
+                status = initialize(config)
+                return emit(status, 0 if status.get("present") else 1)
+            status = read_status(config)
+            if config.get("logoMode"):
+                error = apply_logo(config)
+                if error:
+                    status["error"] = error
+            return emit(status, 0 if status.get("present") else 1)
+        if command == "set-pump":
+            if len(argv) < 2:
+                return usage()
+            mode = argv[1].strip().lower()
+            if mode not in MODES:
+                return emit(empty_status("Pump mode must be quiet, balanced, or performance"), 1)
+            config["pumpMode"] = mode
+            config["managed"] = True
+            save_config(config)
+            return emit(initialize(config))
+        if command == "set-fan":
+            if len(argv) < 2:
+                return usage()
+            try:
+                duty = max(0, min(100, int(argv[1])))
+            except ValueError:
+                return emit(empty_status("Fan speed must be 0-100"), 1)
+            return emit(set_fan(config, duty))
+        if command == "fan-auto":
+            config["fanDuty"] = None
+            config["managed"] = True
+            save_config(config)
+            return emit(initialize(config))
+        if command == "set-logo":
+            if len(argv) < 3:
+                return usage()
+            mode = argv[1].strip().lower()
+            speed = argv[2].strip().lower()
+            if mode not in LOGO_MODES:
+                return emit(empty_status("Logo mode must be fixed, pulse, blinking, shift, or alert"), 1)
+            if speed not in LOGO_SPEEDS:
+                return emit(empty_status("Logo speed must be slower, normal, or faster"), 1)
+            colors = []
+            for item in argv[3:]:
+                hex_color = normalize_hex(item)
+                if not hex_color:
+                    return emit(empty_status("Logo colors must be 6-digit hex"), 1)
+                colors.append(hex_color)
+            return emit(set_logo(config, mode, colors, speed))
+        return usage()
+    finally:
+        lock.close()
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

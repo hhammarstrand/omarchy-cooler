@@ -1,0 +1,5 @@
+#!/bin/bash
+# Re-apply saved H100i Pro pump/fan settings after the desktop starts.
+HELPER="$HOME/.config/omarchy/plugins/hhammarstrand.cooler/coolerctl"
+[[ -x $HELPER ]] || exit 0
+"$HELPER" apply >/dev/null
