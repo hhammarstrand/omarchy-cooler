@@ -76,6 +76,9 @@ Panel {
     return Model.pumpLabel(activePump) + (fanAuto ? " · Auto fans" : "")
   }
 
+  implicitWidth: button.implicitWidth
+  implicitHeight: button.implicitHeight
+
   readonly property string helper: Model.helperPathFromUrl(Qt.resolvedUrl("coolerctl"))
 
   function qtColorToHex(c) {
