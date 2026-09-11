@@ -398,7 +398,10 @@ Panel {
       ScrollView {
         id: scrollArea
         anchors.fill: parent
-        clip: true
+        // Only clip when the column actually scrolls. Otherwise nerd-font
+        // glyphs that paint above their line box get beheaded against the
+        // viewport, which is what cut "H100i Pro" and the temperature.
+        clip: column.implicitHeight > height
         ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
         ScrollBar.vertical.policy: column.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
         Binding {
@@ -413,6 +416,11 @@ Panel {
         spacing: Style.space(14)
 
         Item {
+          width: 1
+          height: Style.space(12)
+        }
+
+        Item {
           width: parent.width
           implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight, heroTemp.implicitHeight)
 
@@ -423,8 +431,10 @@ Panel {
             color: root.logoPreview !== "" ? root.logoPreview : root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.display
+            topPadding: Math.ceil(font.pixelSize * 0.2)
+            bottomPadding: Math.ceil(font.pixelSize * 0.08)
             anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top
           }
 
           Column {
@@ -433,7 +443,7 @@ Panel {
             anchors.leftMargin: Style.space(14)
             anchors.right: heroTemp.left
             anchors.rightMargin: Style.space(10)
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top
             spacing: Style.space(2)
 
             Text {
@@ -442,6 +452,7 @@ Panel {
               font.family: root.fontFamily
               font.pixelSize: Style.font.title
               font.bold: true
+              topPadding: Math.ceil(font.pixelSize * 0.2)
               elide: Text.ElideRight
               width: parent.width
             }
@@ -455,6 +466,7 @@ Panel {
               font.pixelSize: Style.font.caption
               font.bold: true
               font.letterSpacing: 1.2
+              topPadding: Math.ceil(font.pixelSize * 0.15)
               elide: Text.ElideRight
               width: parent.width
             }
@@ -468,8 +480,10 @@ Panel {
             font.family: root.fontFamily
             font.pixelSize: Style.font.displayLarge
             font.bold: true
+            topPadding: Math.ceil(font.pixelSize * 0.2)
+            bottomPadding: Math.ceil(font.pixelSize * 0.08)
             anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.top: parent.top
           }
         }
 
