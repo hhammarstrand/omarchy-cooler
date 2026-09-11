@@ -1,9 +1,8 @@
 var PUMP_MODES = ["quiet", "balanced", "performance"]
 var DISPLAY_MODES = ["temp", "fans", "pump"]
-var LOGO_MODES = ["fixed", "pulse", "blinking", "shift", "alert"]
+var LOGO_MODES = ["fixed", "pulse", "blinking", "shift"]
 var LOGO_SPEEDS = ["slower", "normal", "faster"]
-var LOGO_SWATCHES = ["ffffff", "00c8ff", "3b6cff", "7c3aed", "c026d3", "ef4444", "ff9000", "22c55e", "000000"]
-var ALERT_COLORS = ["00ff00", "ffff00", "ff0000"]
+var LOGO_SWATCHES = ["ffffff", "00ffff", "0080ff", "0022ff", "ff00ff", "ff0000", "ff5500", "00ff00", "000000"]
 
 function clamp(value, min, max) {
   var n = Number(value)
@@ -90,20 +89,18 @@ function logoNeedsSpeed(mode) {
 }
 
 function logoNeedsColors(mode) {
-  return normalizeLogoMode(mode) !== "alert"
+  return true
 }
 
 function logoColorsForMode(mode, colors) {
   var name = normalizeLogoMode(mode)
   var list = normalizeHexList(colors)
-  if (name === "alert") return ALERT_COLORS.slice()
-  if (!list.length) list = ["00c8ff"]
+  if (!list.length) list = ["00ffff"]
   if (name === "shift") {
     if (list.length < 2) list.push("ffffff")
-    return list.slice(0, 4)
+    return list.slice(0, 2)
   }
-  if (name === "fixed") return list.slice(0, 1)
-  return list.slice(0, 4)
+  return list.slice(0, 1)
 }
 
 function asNumber(value) {
@@ -268,7 +265,6 @@ if (typeof module !== "undefined") {
     LOGO_MODES: LOGO_MODES,
     LOGO_SPEEDS: LOGO_SPEEDS,
     LOGO_SWATCHES: LOGO_SWATCHES,
-    ALERT_COLORS: ALERT_COLORS,
     clamp: clamp,
     clampIndex: clampIndex,
     clampDuty: clampDuty,

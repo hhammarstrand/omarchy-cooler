@@ -18,6 +18,7 @@ Panel {
   property int selectedIndex: 0
   property bool cursorActive: false
   property bool fanSetQueued: false
+  property bool pendingFanAuto: false
   property int pendingFanDuty: 40
   property bool logoSetQueued: false
   property var pendingLogo: []
@@ -39,22 +40,13 @@ Panel {
   readonly property string activeLogoMode: status.logoMode || ""
   readonly property var activeLogoColors: status.logoColors || []
   readonly property string activeLogoSpeed: status.logoSpeed || "normal"
-  readonly property var logoSwatches: {
-    var accent = qtColorToHex(Color.accent)
-    var list = []
-    if (accent) list.push(accent)
-    var presets = Model.LOGO_SWATCHES
-    for (var i = 0; i < presets.length; i++) {
-      if (presets[i] !== accent) list.push(presets[i])
-    }
-    return list
-  }
+  readonly property var logoSwatches: Model.LOGO_SWATCHES
   readonly property string logoPreview: Model.logoCss(activeLogoColors.length ? activeLogoColors[0] : "")
   readonly property var visibleSections: {
     var list = ["pump", "fan"]
     if (!present) return list
     list.push("logoMode")
-    if (Model.logoNeedsColors(activeLogoMode || "fixed")) list.push("logoColor")
+    list.push("logoColor")
     if (Model.logoNeedsSpeed(activeLogoMode)) list.push("logoSpeed")
     return list
   }
@@ -147,8 +139,14 @@ Panel {
   }
 
   function restoreAutoFans() {
-    if (actionProc.running) return
+    fanDebounce.stop()
+    fanSetQueued = false
     status = Model.withFanAuto(status)
+    if (actionProc.running) {
+      pendingFanAuto = true
+      return
+    }
+    pendingFanAuto = false
     runHelper(["fan-auto"])
   }
 
@@ -167,14 +165,11 @@ Panel {
   }
 
   function pickLogoMode(mode) {
-    var colors = activeLogoColors
-    if (mode === "alert") colors = Model.ALERT_COLORS
-    setLogo(mode, colors, activeLogoSpeed)
+    setLogo(mode, activeLogoColors, activeLogoSpeed)
   }
 
   function pickLogoColor(hex, asSecondary) {
     var mode = activeLogoMode || "fixed"
-    if (mode === "alert") mode = "fixed"
     var colors
     if (mode === "shift" && asSecondary) {
       var primary = activeLogoColors.length ? activeLogoColors[0] : hex
@@ -352,7 +347,11 @@ Panel {
     }
     onRunningChanged: {
       if (running) return
-      if (root.fanSetQueued) root.setFan(root.pendingFanDuty)
+      if (root.pendingFanAuto) {
+        root.pendingFanAuto = false
+        root.fanSetQueued = false
+        root.runHelper(["fan-auto"])
+      } else if (root.fanSetQueued) root.setFan(root.pendingFanDuty)
       else if (root.logoSetQueued) {
         root.logoSetQueued = false
         root.runHelper(root.pendingLogo)
@@ -569,7 +568,7 @@ Panel {
 
           Item {
             width: parent.width
-            implicitHeight: Math.max(fanHeader.implicitHeight, fanPercent.implicitHeight)
+            implicitHeight: Math.max(fanHeader.implicitHeight, fanAutoButton.implicitHeight)
 
             PanelSectionHeader {
               id: fanHeader
@@ -580,17 +579,35 @@ Panel {
               anchors.verticalCenter: parent.verticalCenter
             }
 
-            Text {
-              id: fanPercent
-              textFormat: Text.PlainText
-              text: root.fanAuto && !fanSlider.dragging ? "Auto" : (Math.round(fanSlider.dragging ? fanSlider.liveValue : root.fanDuty) + "%")
-              color: Qt.darker(root.foreground, 1.4)
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
+            Row {
               anchors.right: parent.right
-              anchors.rightMargin: Style.space(6)
               anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(8)
+
+              Text {
+                id: fanPercent
+                visible: !root.fanAuto || fanSlider.dragging
+                textFormat: Text.PlainText
+                text: Math.round(fanSlider.dragging ? fanSlider.liveValue : root.fanDuty) + "%"
+                color: Qt.darker(root.foreground, 1.4)
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              Button {
+                id: fanAutoButton
+                text: "Auto"
+                fontSize: Style.font.bodySmall
+                foreground: root.foreground
+                fontFamily: root.fontFamily
+                horizontalPadding: Style.spacing.controlPaddingX
+                verticalPadding: Style.spacing.controlPaddingY
+                bordered: true
+                active: root.fanAuto
+                onClicked: root.restoreAutoFans()
+              }
             }
           }
 
@@ -657,7 +674,7 @@ Panel {
             Text {
               id: logoHint
               visible: root.activeLogoMode === "shift"
-              text: "Right-click a second color"
+              text: "Left + right click two colors"
               color: Qt.darker(root.foreground, 1.4)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

@@ -38,9 +38,10 @@ Run that from the plugin directory, or copy `hooks/apply-cooler` first.
 In the panel:
 
 - **Pump mode:** Quiet, Balanced, Performance
-- **Fan speed:** slider; right-click the slider for Auto (firmware curve)
-- **Logo:** Fixed, Pulse, Blink, Shift, Alert
-- Color swatches set the ring. In Shift, right-click a second color.
+- **Fan speed:** slider for a fixed percent; **Auto** applies a liquid-temp curve
+- **Logo:** Fixed (one color), Pulse (breathe), Blink (on/off), Shift (two colors)
+- Color swatches are saturated so they match the LED ring more closely
+- Shift: left-click first color, right-click second color
 - Pulse / Blink / Shift show Slower, Normal, Faster
 
 Settings are stored in `~/.config/omarchy/cooler.json`. Fan and pump

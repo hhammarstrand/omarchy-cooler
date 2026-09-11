@@ -20,9 +20,9 @@ CONFIG_PATH = os.environ.get(
 )
 LOCK_PATH = os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "omarchy-cooler.lock")
 MODES = ("quiet", "balanced", "performance")
-LOGO_MODES = ("fixed", "pulse", "blinking", "shift", "alert")
+LOGO_MODES = ("fixed", "pulse", "blinking", "shift")
 LOGO_SPEEDS = ("slower", "normal", "faster")
-ALERT_COLORS = ["00ff00", "ffff00", "ff0000"]
+AUTO_FAN_CURVE = (20, 20, 30, 30, 35, 45, 40, 65, 45, 85, 50, 100)
 
 
 def empty_status(error: str = "No cooler found") -> dict:
@@ -97,18 +97,14 @@ def logo_payload(config: dict) -> tuple[str, list[str], str]:
         return "", [], "normal"
     colors = [c for c in (normalize_hex(item) for item in (config.get("logoColors") or [])) if c]
     speed = config.get("logoSpeed") if config.get("logoSpeed") in LOGO_SPEEDS else "normal"
-    if mode == "alert":
-        colors = list(ALERT_COLORS)
-    elif mode == "shift":
-        if not colors:
-            colors = ["00c8ff"]
+    if not colors:
+        colors = ["00ffff"]
+    if mode == "shift":
         if len(colors) < 2:
             colors.append("ffffff")
-        colors = colors[:4]
+        colors = colors[:2]
     else:
-        if not colors:
-            colors = ["00c8ff"]
-        colors = colors[:1] if mode == "fixed" else colors[:4]
+        colors = colors[:1]
     return mode, colors, speed
 
 
@@ -215,21 +211,32 @@ def initialize(config: dict) -> dict:
     firmware = ""
     if payload:
         firmware = status_value((payload[0] if isinstance(payload, list) else payload).get("status"), "Firmware version") or ""
-    if config.get("fanDuty") is not None:
-        fan = liquidctl("set", "fan", "speed", str(config["fanDuty"]))
-        if fan.returncode != 0:
-            status = read_status(config)
-            status["error"] = (fan.stderr or "").strip() or "Could not set fan speed"
-            if firmware and not status.get("firmware"):
-                status["firmware"] = firmware
-            return status
+    fan_error = apply_fan(config)
     status = read_status(config)
     if firmware and not status.get("firmware"):
         status["firmware"] = firmware
+    if fan_error:
+        status["error"] = fan_error
+        return status
     logo_error = apply_logo(config)
     if logo_error:
         status["error"] = logo_error
     return status
+
+
+def apply_fan(config: dict) -> str:
+    try:
+        if config.get("fanDuty") is not None:
+            proc = liquidctl("set", "fan", "speed", str(int(config["fanDuty"])))
+        elif config.get("managed"):
+            proc = liquidctl("set", "fan", "speed", *[str(n) for n in AUTO_FAN_CURVE])
+        else:
+            return ""
+    except FileNotFoundError:
+        return "liquidctl is not installed"
+    if proc.returncode != 0:
+        return (proc.stderr or "").strip() or "Could not set fan speed"
+    return ""
 
 
 def apply_logo(config: dict) -> str:
@@ -325,14 +332,18 @@ def main(argv: list[str]) -> int:
             config["fanDuty"] = None
             config["managed"] = True
             save_config(config)
-            return emit(initialize(config))
+            error = apply_fan(config)
+            status = read_status(config)
+            if error:
+                status["error"] = error
+            return emit(status, 0 if status.get("present") else 1)
         if command == "set-logo":
             if len(argv) < 3:
                 return usage()
             mode = argv[1].strip().lower()
             speed = argv[2].strip().lower()
             if mode not in LOGO_MODES:
-                return emit(empty_status("Logo mode must be fixed, pulse, blinking, shift, or alert"), 1)
+                return emit(empty_status("Logo mode must be fixed, pulse, blinking, or shift"), 1)
             if speed not in LOGO_SPEEDS:
                 return emit(empty_status("Logo speed must be slower, normal, or faster"), 1)
             colors = []
