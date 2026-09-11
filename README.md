@@ -26,6 +26,20 @@ omarchy hook install post-boot hooks/apply-cooler
 
 Run that from the plugin directory, or copy `hooks/apply-cooler` first.
 
+## Launch as an app
+
+```bash
+omarchy-shell hhammarstrand.cooler open
+```
+
+Or from the Omarchy menu: search **Cooler**. A desktop entry can be installed with:
+
+```bash
+install -Dm644 icon.svg ~/.local/share/icons/hicolor/scalable/apps/omarchy-cooler.svg
+install -Dm644 extra/omarchy-cooler.desktop ~/.local/share/applications/omarchy-cooler.desktop
+update-desktop-database ~/.local/share/applications
+```
+
 ## Usage
 
 | Input | Action |

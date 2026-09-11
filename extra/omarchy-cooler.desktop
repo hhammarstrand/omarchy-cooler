@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Cooler
+Name[sv]=Kylare
+Comment=Corsair H100i Pro pump, fans, and logo
+Comment[sv]=Corsair H100i Pro pump, fläktar och logo
+Exec=omarchy-shell hhammarstrand.cooler open
+Icon=omarchy-cooler
+Terminal=false
+StartupNotify=false
+Categories=Settings;HardwareSettings;
+Keywords=corsair;aio;fan;rgb;h100i;cooler;kylare;
