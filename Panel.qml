@@ -73,15 +73,6 @@ Panel {
 
   readonly property string helper: Model.helperPathFromUrl(Qt.resolvedUrl("coolerctl"))
 
-  function qtColorToHex(c) {
-    if (!c) return ""
-    function h(n) {
-      var v = Math.round(Model.clamp(n * 255, 0, 255)).toString(16)
-      return v.length < 2 ? "0" + v : v
-    }
-    return h(c.r) + h(c.g) + h(c.b)
-  }
-
   function refresh() {
     if (!statusProc.running) statusProc.running = true
   }
