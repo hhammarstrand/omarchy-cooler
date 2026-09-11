@@ -61,7 +61,7 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color urgent: bar ? bar.urgent : Color.urgent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  readonly property real openPanelIndicatorWidth: !vertical ? button.glyphPaintedWidth : 0
+  readonly property real openPanelIndicatorWidth: !vertical ? button.labelWidth : 0
   readonly property var activePhrases: present ? [
     "Moving coolant",
     "Spinning blades",
@@ -360,12 +360,14 @@ Panel {
     }
   }
 
-  BarIconButton {
+  WidgetButton {
     id: button
     anchors.fill: parent
     bar: root.bar
     text: Model.barText(root.status, root.displayMode, root.vertical)
-    slotSize: Style.bar.iconSlot * (root.vertical ? 1 : 2)
+    fontFamily: Style.font.family
+    fontSize: Style.bar.iconFont
+    horizontalMargin: 8.75
     dimmed: !root.present
     tooltipText: ""
     onPressed: function(b) {

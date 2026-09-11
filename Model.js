@@ -210,7 +210,7 @@ function pumpIcon(mode) {
 }
 
 function coolerIcon() {
-  return "󰖌"
+  return "󰔏"
 }
 
 function fanIcon() {
@@ -231,9 +231,9 @@ function nextDisplayMode(mode) {
 function barText(status, displayMode, vertical) {
   var data = status || emptyStatus()
   if (vertical || !data.present) return coolerIcon()
-  if (displayMode === "fans") return formatRpmShort(data.fan1Rpm) + " " + fanIcon()
-  if (displayMode === "pump") return formatRpmShort(data.pumpRpm) + " " + pumpGlyph()
-  return formatTemp(data.liquidTemp, false) + " " + coolerIcon()
+  if (displayMode === "fans") return coolerIcon() + " " + formatRpmShort(data.fan1Rpm)
+  if (displayMode === "pump") return coolerIcon() + " " + formatRpmShort(data.pumpRpm)
+  return coolerIcon() + " " + formatTemp(data.liquidTemp, false)
 }
 
 function tempUrgent(value) {
